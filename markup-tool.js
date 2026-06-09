@@ -369,6 +369,7 @@ class AttributeMarkupTool {
 
         phaseCards.innerHTML = `<p class="phase-empty">${message}</p>`;
         this.updatePhaseCount();
+        this.updateActivePhaseLabel();
     }
 
     updatePhaseCount() {
@@ -387,6 +388,7 @@ class AttributeMarkupTool {
         if (!this.phaseGroups.length) {
             phaseCards.innerHTML = '<p class="phase-empty">Select a property to load phase values.</p>';
             this.updatePhasePlaybackButton();
+            this.updateActivePhaseLabel();
             return;
         }
 
@@ -402,16 +404,10 @@ class AttributeMarkupTool {
             card.draggable = true;
             card.dataset.phaseIndex = String(index);
             card.innerHTML = `
-                <div class="phase-card-top">
-                    <p class="phase-card-name">${this.escapeHtml(group.value)}</p>
-                    <button class="phase-card-remove" type="button" data-remove-phase="${index}" aria-label="Remove phase ${this.escapeHtml(group.value)}">
-                        <span class="material-icons-round" aria-hidden="true">close</span>
-                    </button>
-                </div>
-                <div class="phase-card-meta">
-                    <span class="phase-card-order">Phase ${index + 1}</span>
-                    <span>${group.count} object(s)</span>
-                </div>
+                <p class="phase-card-name">${this.escapeHtml(group.value)} (${group.count})</p>
+                <button class="phase-card-remove" type="button" data-remove-phase="${index}" aria-label="Remove phase ${this.escapeHtml(group.value)}">
+                    <span class="material-icons-round" aria-hidden="true">close</span>
+                </button>
             `;
 
             card.addEventListener('dragstart', () => {
@@ -443,6 +439,7 @@ class AttributeMarkupTool {
         });
 
         this.updatePhasePlaybackButton();
+        this.updateActivePhaseLabel();
     }
 
     async removePhaseGroup(index) {
@@ -539,24 +536,23 @@ class AttributeMarkupTool {
 
         if (targetIndex < 0) {
             await this.api.viewer.setObjectState(undefined, { visible: false });
+            this.updateActivePhaseLabel();
             this.renderPhaseCards();
             return;
         }
 
-        await this.api.viewer.setObjectState(undefined, { visible: false });
-
-        for (let index = 0; index <= targetIndex; index += 1) {
-            const group = this.phaseGroups[index];
-            if (!group?.objectSelector) continue;
-            await this.api.viewer.setObjectState(group.objectSelector, { visible: true });
-        }
+        const cumulativeEntities = this.buildCumulativePhaseEntities(targetIndex);
+        await this.api.viewer.setObjectState(undefined, { visible: 'reset' });
+        await this.api.viewer.isolateEntities(cumulativeEntities);
 
         this.log(`4D phase applied up to step ${targetIndex + 1}`);
+        this.updateActivePhaseLabel();
     }
 
     async resetViewerVisibility() {
         if (!this.api?.viewer) return;
         await this.api.viewer.setObjectState(undefined, { visible: 'reset' });
+        this.updateActivePhaseLabel();
     }
 
     updatePhasePlaybackButton() {
@@ -567,6 +563,41 @@ class AttributeMarkupTool {
             ? '<span class="material-icons-round" aria-hidden="true">pause</span>'
             : '<span class="material-icons-round" aria-hidden="true">play_arrow</span>';
         playButton.setAttribute('aria-label', this.phasePlaybackRunning ? 'Pause sequence' : 'Play sequence');
+    }
+
+    updateActivePhaseLabel() {
+        const activePhaseLabel = document.getElementById('active-phase-label');
+        if (!activePhaseLabel) return;
+
+        if (this.phaseCurrentIndex < 0 || this.phaseCurrentIndex >= this.phaseGroups.length) {
+            activePhaseLabel.textContent = 'No active phase';
+            return;
+        }
+
+        activePhaseLabel.textContent = this.phaseGroups[this.phaseCurrentIndex].value;
+    }
+
+    buildCumulativePhaseEntities(targetIndex) {
+        const groupedByModel = new Map();
+
+        for (let index = 0; index <= targetIndex; index += 1) {
+            const group = this.phaseGroups[index];
+            if (!group?.objectsByModel) continue;
+
+            for (const [modelId, objectRuntimeIds] of group.objectsByModel.entries()) {
+                if (!groupedByModel.has(modelId)) {
+                    groupedByModel.set(modelId, new Set());
+                }
+
+                const modelSet = groupedByModel.get(modelId);
+                objectRuntimeIds.forEach(objectRuntimeId => modelSet.add(objectRuntimeId));
+            }
+        }
+
+        return Array.from(groupedByModel.entries()).map(([modelId, entityIds]) => ({
+            modelId,
+            entityIds: Array.from(entityIds)
+        }));
     }
 
     escapeHtml(value) {
