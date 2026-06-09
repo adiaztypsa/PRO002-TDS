@@ -213,7 +213,7 @@ input {
 
 .phase-cards {
     display: grid;
-    gap: 8px;
+    gap: 6px;
     max-height: 228px;
     overflow-y: auto;
     padding-right: 2px;
@@ -230,59 +230,83 @@ input {
     line-height: 1.4;
 }
 
-.phase-card {
-    display: flex;
+.phase-table-head,
+.phase-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 60px;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
-    padding: 10px;
-    border-radius: var(--radius-lg);
-    border: 1px solid rgba(24, 33, 47, 0.1);
-    background: rgba(255, 255, 255, 0.84);
-    box-shadow: 0 8px 14px rgba(24, 33, 47, 0.05);
-    cursor: grab;
 }
 
-.phase-card.is-dragging {
-    opacity: 0.55;
+.phase-table-head {
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
-.phase-card.is-active {
-    border-color: rgba(201, 20, 45, 0.28);
-    box-shadow: 0 10px 18px rgba(201, 20, 45, 0.12);
-    background: linear-gradient(180deg, rgba(201, 20, 45, 0.12), rgba(255, 255, 255, 0.94));
+.phase-row {
+    padding: 7px 6px 7px 10px;
+    border-bottom: 1px solid rgba(24, 33, 47, 0.08);
 }
 
-.phase-card-name {
-    margin: 0;
-    flex: 1;
+.phase-row.is-active {
+    background: rgba(201, 20, 45, 0.08);
+}
+
+.phase-cell {
     min-width: 0;
-    font-size: 0.73rem;
+}
+
+.phase-cell-main {
+    margin: 0;
+    font-size: 0.71rem;
     font-weight: 700;
     line-height: 1.2;
     word-break: break-word;
 }
 
-.phase-card-remove {
-    width: 20px;
-    height: 20px;
+.phase-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 16px);
+    align-items: center;
+    justify-content: end;
+    gap: 4px;
+}
+
+.phase-order-button,
+.phase-remove-button {
+    width: 16px;
+    height: 16px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border: 0;
     border-radius: 999px;
-    background: rgba(24, 33, 47, 0.08);
+    background: transparent;
     color: var(--muted);
     cursor: pointer;
+    padding: 0;
 }
 
-.phase-card-remove .material-icons-round {
+.phase-order-button .material-icons-round,
+.phase-remove-button .material-icons-round {
     font-size: 0.9rem;
 }
 
-.phase-card-remove:hover {
+.phase-order-button:hover,
+.phase-remove-button:hover {
     background: rgba(201, 20, 45, 0.14);
     color: var(--accent-deep);
+}
+
+.phase-order-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+    background: transparent;
+    color: var(--muted);
 }
 
 .phase-slider {

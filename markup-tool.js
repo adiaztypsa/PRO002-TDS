@@ -23,7 +23,6 @@ class AttributeMarkupTool {
         this.phaseCurrentIndex = -1;
         this.phasePlaybackTimer = null;
         this.phasePlaybackRunning = false;
-        this.draggedPhaseIndex = null;
 
         // Live Labels tracking
         this.objectToMarkupMap = new Map(); // Map objectId -> markupId for live labels
@@ -176,24 +175,6 @@ class AttributeMarkupTool {
             });
         }
 
-        if (phaseCards) {
-            phaseCards.addEventListener('dragover', (event) => {
-                event.preventDefault();
-            });
-
-            phaseCards.addEventListener('drop', (event) => {
-                event.preventDefault();
-                if (this.draggedPhaseIndex === null) return;
-
-                const targetCard = event.target.closest('.phase-card');
-                const targetIndex = targetCard
-                    ? Number(targetCard.dataset.phaseIndex)
-                    : this.phaseGroups.length - 1;
-
-                this.movePhaseGroup(this.draggedPhaseIndex, targetIndex);
-            });
-        }
-
         this.renderPhaseCards();
         this.updatePhasePlaybackButton();
     }
@@ -334,11 +315,57 @@ class AttributeMarkupTool {
         }
 
         return Array.from(groupedValues.values())
-            .sort((left, right) => left.value.localeCompare(right.value, undefined, { numeric: true, sensitivity: 'base' }))
+            .sort((left, right) => this.comparePhaseValues(left.value, right.value))
             .map(group => ({
                 ...group,
                 objectSelector: this.buildObjectSelectorFromMap(group.objectsByModel)
             }));
+    }
+
+    comparePhaseValues(leftValue, rightValue) {
+        const leftKey = this.getPhaseSortKey(leftValue);
+        const rightKey = this.getPhaseSortKey(rightValue);
+
+        if (leftKey && rightKey) {
+            if (leftKey.year !== rightKey.year) return leftKey.year - rightKey.year;
+            if (leftKey.month !== rightKey.month) return leftKey.month - rightKey.month;
+        }
+
+        return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    getPhaseSortKey(value) {
+        const normalized = String(value).trim();
+        if (!normalized) return null;
+
+        let match = normalized.match(/^(\d{2})[\/-](\d{4})$/);
+        if (match) {
+            const month = Number(match[1]);
+            const year = Number(match[2]);
+            if (month >= 1 && month <= 12) {
+                return { year, month };
+            }
+        }
+
+        match = normalized.match(/^(\d{4})(\d{2})$/);
+        if (match) {
+            const year = Number(match[1]);
+            const month = Number(match[2]);
+            if (month >= 1 && month <= 12) {
+                return { year, month };
+            }
+        }
+
+        match = normalized.match(/^(\d{2})(\d{4})$/);
+        if (match) {
+            const month = Number(match[1]);
+            const year = Number(match[2]);
+            if (month >= 1 && month <= 12) {
+                return { year, month };
+            }
+        }
+
+        return null;
     }
 
     normalizePhaseValue(value) {
@@ -392,45 +419,43 @@ class AttributeMarkupTool {
             return;
         }
 
-        phaseCards.innerHTML = '';
+        phaseCards.innerHTML = '<div class="phase-table-head"><span>Phase</span><span>Actions</span></div>';
 
         this.phaseGroups.forEach((group, index) => {
-            const card = document.createElement('article');
-            card.className = 'phase-card';
+            const card = document.createElement('div');
+            card.className = 'phase-row';
             if (index <= this.phaseCurrentIndex && this.phaseCurrentIndex >= 0) {
                 card.classList.add('is-active');
             }
 
-            card.draggable = true;
             card.dataset.phaseIndex = String(index);
             card.innerHTML = `
-                <p class="phase-card-name">${this.escapeHtml(group.value)} (${group.count})</p>
-                <button class="phase-card-remove" type="button" data-remove-phase="${index}" aria-label="Remove phase ${this.escapeHtml(group.value)}">
-                    <span class="material-icons-round" aria-hidden="true">close</span>
-                </button>
+                <p class="phase-cell phase-cell-main">${this.escapeHtml(group.value)} (${group.count})</p>
+                <div class="phase-actions">
+                    <button class="phase-order-button" type="button" data-move-up="${index}" aria-label="Move phase ${this.escapeHtml(group.value)} up" ${index === 0 ? 'disabled' : ''}>
+                        <span class="material-icons-round" aria-hidden="true">keyboard_arrow_up</span>
+                    </button>
+                    <button class="phase-order-button" type="button" data-move-down="${index}" aria-label="Move phase ${this.escapeHtml(group.value)} down" ${index === this.phaseGroups.length - 1 ? 'disabled' : ''}>
+                        <span class="material-icons-round" aria-hidden="true">keyboard_arrow_down</span>
+                    </button>
+                    <button class="phase-remove-button" type="button" data-remove-phase="${index}" aria-label="Remove phase ${this.escapeHtml(group.value)}">
+                        <span class="material-icons-round" aria-hidden="true">close</span>
+                    </button>
+                </div>
             `;
 
-            card.addEventListener('dragstart', () => {
-                this.draggedPhaseIndex = index;
-                card.classList.add('is-dragging');
-            });
-
-            card.addEventListener('dragend', () => {
-                this.draggedPhaseIndex = null;
-                card.classList.remove('is-dragging');
-            });
-
-            card.addEventListener('dragover', (event) => {
-                event.preventDefault();
-            });
-
-            card.addEventListener('drop', (event) => {
-                event.preventDefault();
-                if (this.draggedPhaseIndex === null) return;
-                this.movePhaseGroup(this.draggedPhaseIndex, index);
-            });
-
             const removeButton = card.querySelector('[data-remove-phase]');
+            const moveUpButton = card.querySelector('[data-move-up]');
+            const moveDownButton = card.querySelector('[data-move-down]');
+
+            moveUpButton.addEventListener('click', async () => {
+                await this.shiftPhaseGroup(index, -1);
+            });
+
+            moveDownButton.addEventListener('click', async () => {
+                await this.shiftPhaseGroup(index, 1);
+            });
+
             removeButton.addEventListener('click', async () => {
                 await this.removePhaseGroup(index);
             });
@@ -474,6 +499,13 @@ class AttributeMarkupTool {
         this.phaseCurrentIndex = -1;
         this.renderPhaseCards();
         this.log(`Moved 4D phase "${movedGroup.value}" to position ${toIndex + 1}`);
+    }
+
+    async shiftPhaseGroup(index, direction) {
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= this.phaseGroups.length) return;
+
+        this.movePhaseGroup(index, targetIndex);
     }
 
     async playPhaseSequence() {
